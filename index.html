@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smooth Notepad</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 24px 24px;
+            color: #f8fafc;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Animation Classes */
+        .note-card {
+            transition: transform 0.1s linear, 
+                        box-shadow 0.3s ease,
+                        opacity 0.3s ease;
+            will-change: transform, opacity;
+            transform-style: preserve-3d;
+            perspective: 1000px;
+        }
+
+        .note-card:hover {
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.1);
+            z-index: 10;
+        }
+        
+        /* Spotlight & Shine Effect */
+        .note-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: inherit;
+            background: radial-gradient(
+                800px circle at var(--mouse-x, 0) var(--mouse-y, 0),
+                rgba(255, 255, 255, 0.1),
+                transparent 40%
+            );
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+            z-index: 2;
+            mix-blend-mode: overlay;
+        }
+        
+        /* Inner Content Depth */
+        .note-card > * {
+            transform: translateZ(20px);
+            pointer-events: none; /* Let clicks pass through to card for ripple/interactions */
+        }
+        
+        .note-card:hover::before {
+            opacity: 1;
+        }
+
+        /* Removed default active scale in favor of JS tilt logic */
+
+        /* Initial pop-in animation for new notes */
+        @keyframes popIn {
+            0% { opacity: 0; transform: scale(0.8) translateY(40px); filter: blur(4px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+        }
+        
+        .animate-pop-in {
+            animation: popIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards; /* Slight overshoot */
+        }
+
+        /* Delete animation */
+        @keyframes popOut {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.5) translateY(20px); }
+        }
+
+        .animate-pop-out {
+            animation: popOut 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Editor Modal Transitions */
+        #editor-overlay {
+            transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        #editor-container {
+            transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), 
+                        opacity 0.4s ease,
+                        box-shadow 0.2s ease,
+                        border-color 0.2s ease;
+        }
+
+        /* Typing Visual Feedback */
+        .is-typing {
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5), 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+            border-color: rgba(99, 102, 241, 0.4) !important;
+        }
+
+        .floating-action-button {
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s;
+        }
+        .floating-action-button:hover {
+            transform: scale(1.1) rotate(180deg);
+        }
+        .floating-action-button:active {
+            transform: scale(0.9) rotate(180deg);
+        }
+        
+        .click-ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(0);
+            animation: ripple 0.6s linear;
+            pointer-events: none;
+        }
+
+        @keyframes ripple {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        /* Content Editable Placeholder */
+        [contenteditable]:empty:before {
+            content: attr(placeholder);
+            color: #64748b;
+            pointer-events: none;
+            display: block; /* For Firefox */
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Typing Kick Animation */
+        @keyframes kick {
+            0% { transform: scale(1); }
+            50% { transform: scale(0.998); } /* Very subtle impact */
+            100% { transform: scale(1); }
+        }
+        .animate-kick {
+            animation: kick 0.08s ease-out;
+        }
+
+        /* Caret Particles */
+        .caret-particle {
+            position: fixed;
+            pointer-events: none;
+            border-radius: 50%;
+            z-index: 100; /* Above editor */
+        }
+
+        /* Ambient Background Blobs */
+        .ambient-blob {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(60px);
+            z-index: -1;
+            opacity: 0.3;
+            animation: float-blob 20s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+        }
+        
+        .blob-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: #4f46e5; animation-delay: 0s; }
+        .blob-2 { bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: #0891b2; animation-delay: -5s; }
+        .blob-3 { top: 40%; left: 40%; width: 40vw; height: 40vw; background: #7c3aed; animation-delay: -10s; opacity: 0.2; }
+
+        @keyframes float-blob {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            100% { transform: translate(50px, 30px) scale(1.1) rotate(10deg); }
+        }
+
+        /* Smooth Cursor Trail */
+        .cursor-dot {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 24px;
+            height: 24px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+            transition: width 0.3s, height 0.3s, background-color 0.3s;
+            mix-blend-mode: difference;
+            backdrop-filter: blur(2px);
+        }
+
+        /* Selection Color */
+        ::selection {
+            background: rgba(99, 102, 241, 0.3); /* Indigo */
+            color: white;
+        }
+
+        /* Toggle Switch Animation */
+        .toggle-checkbox:checked + div {
+            background-color: #6366f1;
+        }
+        .toggle-checkbox:checked + div > div {
+            transform: translateX(100%);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col relative">
+
+    <!-- Ambient Background -->
+    <div id="ambient-layer">
+        <div class="ambient-blob blob-1"></div>
+        <div class="ambient-blob blob-2"></div>
+        <div class="ambient-blob blob-3"></div>
+    </div>
+    
+    <!-- Smooth Cursor -->
+    <div id="cursor-dot" class="cursor-dot hidden md:block"></div>
+
+    <!-- Header -->
+    <header class="p-6 md:p-10 flex justify-between items-center z-10">
+        <div>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tight">FlowNotes</h1>
+            <p class="text-slate-400 text-sm mt-1">Capture ideas smoothly</p>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="text-xs text-slate-500 font-mono hidden sm:block" id="note-count">0 notes</div>
+            <button id="settings-btn" class="p-2 rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition-colors cursor-pointer relative group">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="flex-grow p-6 md:p-10">
+        <div id="notes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-max pb-24">
+            <!-- Notes will be injected here via JS -->
+        </div>
+        
+        <!-- Empty State -->
+        <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-0 transition-opacity duration-500">
+            <div class="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center mb-4 shadow-lg ring-1 ring-white/10">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </div>
+            <p class="text-slate-500 text-lg font-medium">No notes yet</p>
+            <p class="text-slate-600 text-sm">Click the + button to create one</p>
+        </div>
+    </main>
+
+    <!-- Floating Action Button -->
+    <button id="add-btn" class="floating-action-button fixed bottom-8 right-8 w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-2xl shadow-indigo-500/30 flex items-center justify-center z-20 cursor-pointer border border-white/20 outline-none">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+    </button>
+
+    <!-- Editor Overlay (Modal) -->
+    <div id="editor-overlay" class="fixed inset-0 z-50 flex items-center justify-center opacity-0 pointer-events-none bg-black/60 backdrop-blur-md transition-all duration-300">
+        <div id="editor-container" class="w-full max-w-3xl h-[85vh] md:h-[80vh] m-4 bg-slate-800 rounded-3xl shadow-2xl flex flex-col relative transform scale-95 overflow-hidden ring-1 ring-white/10 origin-center">
+            
+            <!-- Editor Toolbar -->
+            <div class="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-slate-800/50">
+                <div class="text-xs font-mono text-slate-500" id="last-edited">Last edited just now</div>
+                <div class="flex gap-2">
+                    <button id="delete-note-btn" class="p-2 rounded-full hover:bg-red-500/10 hover:text-red-400 text-slate-400 transition-colors" title="Delete Note">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                    <button id="close-editor-btn" class="p-2 rounded-full hover:bg-slate-700 text-slate-400 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Editor Content -->
+            <div class="flex-grow flex flex-col overflow-y-auto p-8 md:p-12 custom-scrollbar">
+                <input type="text" id="note-title" placeholder="Untitled Note" class="caret-indigo-500 text-3xl md:text-4xl font-bold bg-transparent border-none outline-none text-white placeholder-slate-600 mb-6 w-full transition-all">
+                <div id="note-body" contenteditable="true" placeholder="Start typing your thoughts..." class="caret-indigo-500 flex-grow text-lg text-slate-300 leading-relaxed outline-none min-h-[200px] transition-all"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-overlay" class="fixed inset-0 z-50 flex items-center justify-center opacity-0 pointer-events-none bg-black/60 backdrop-blur-sm transition-all duration-300">
+        <div id="settings-container" class="w-full max-w-md m-4 bg-slate-800 rounded-2xl shadow-2xl p-6 ring-1 ring-white/10 transform scale-95 transition-all duration-300">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-white">Settings</h2>
+                <button id="close-settings-btn" class="text-slate-400 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4">
+                <!-- Sound Setting -->
+                <div class="flex items-center justify-between p-3 rounded-lg bg-slate-700/50">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="font-medium text-slate-200">Sound Effects</div>
+                            <div class="text-xs text-slate-500">Thocks & pops</div>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-sound" class="sr-only toggle-checkbox">
+                        <div class="w-11 h-6 bg-slate-600 rounded-full transition-colors duration-200 ease-in-out border border-slate-500">
+                            <div class="absolute left-[2px] top-[2px] bg-white w-5 h-5 rounded-full transition-transform duration-200 ease-in-out shadow-sm"></div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Particles Setting -->
+                <div class="flex items-center justify-between p-3 rounded-lg bg-slate-700/50">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-purple-500/20 rounded-lg text-purple-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="font-medium text-slate-200">Particles</div>
+                            <div class="text-xs text-slate-500">Visual confetti</div>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-particles" class="sr-only toggle-checkbox">
+                        <div class="w-11 h-6 bg-slate-600 rounded-full transition-colors duration-200 ease-in-out border border-slate-500">
+                            <div class="absolute left-[2px] top-[2px] bg-white w-5 h-5 rounded-full transition-transform duration-200 ease-in-out shadow-sm"></div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Cursor Setting -->
+                <div class="flex items-center justify-between p-3 rounded-lg bg-slate-700/50">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-cyan-500/20 rounded-lg text-cyan-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="font-medium text-slate-200">Smooth Cursor</div>
+                            <div class="text-xs text-slate-500">Laggy comet trail</div>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-cursor" class="sr-only toggle-checkbox">
+                        <div class="w-11 h-6 bg-slate-600 rounded-full transition-colors duration-200 ease-in-out border border-slate-500">
+                            <div class="absolute left-[2px] top-[2px] bg-white w-5 h-5 rounded-full transition-transform duration-200 ease-in-out shadow-sm"></div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Blobs Setting -->
+                <div class="flex items-center justify-between p-3 rounded-lg bg-slate-700/50">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-pink-500/20 rounded-lg text-pink-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="font-medium text-slate-200">Ambient Light</div>
+                            <div class="text-xs text-slate-500">Background blobs</div>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-blobs" class="sr-only toggle-checkbox">
+                        <div class="w-11 h-6 bg-slate-600 rounded-full transition-colors duration-200 ease-in-out border border-slate-500">
+                            <div class="absolute left-[2px] top-[2px] bg-white w-5 h-5 rounded-full transition-transform duration-200 ease-in-out shadow-sm"></div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="mt-6 text-center text-xs text-slate-600">
+                Created for smooth minds ✨
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Settings State ---
+        const appSettings = JSON.parse(localStorage.getItem('smooth-notes-settings') || '{"sound":true,"particles":true,"cursor":true,"blobs":true}');
+
+        function saveSettings() {
+            localStorage.setItem('smooth-notes-settings', JSON.stringify(appSettings));
+            applySettings();
+        }
+
+        // --- Sound Engine for Satisfying Clicks ---
+        const SoundEngine = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playKeySound() {
+                if (!appSettings.sound) return;
+                if (!this.ctx) this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                const filter = this.ctx.createBiquadFilter();
+                
+                // --- Complex "Thock" Synthesis ---
+                
+                // 1. Tonal Component (The switch body resonance)
+                osc.type = 'triangle';
+                // Randomize pitch slightly for organic feel
+                const baseFreq = 150 + (Math.random() * 40 - 20); 
+                osc.frequency.setValueAtTime(baseFreq, t);
+                osc.frequency.exponentialRampToValueAtTime(40, t + 0.08); // Faster decay
+                
+                // 2. Filter (Dampening)
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1200, t);
+                filter.frequency.exponentialRampToValueAtTime(100, t + 0.08);
+
+                // 3. Envelope
+                gain.gain.setValueAtTime(0.08, t); 
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                osc.stop(t + 0.1);
+            },
+            playPopSound() {
+                if (!appSettings.sound) return;
+                if (!this.ctx) this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+                
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, t);
+                osc.frequency.exponentialRampToValueAtTime(1200, t + 0.1);
+                
+                gain.gain.setValueAtTime(0.05, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                
+                osc.start(t);
+                osc.stop(t + 0.15);
+            },
+            playSwoosh() {
+                if (!appSettings.sound) return;
+                if (!this.ctx) this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                const filter = this.ctx.createBiquadFilter();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, t);
+                osc.frequency.exponentialRampToValueAtTime(800, t + 0.3);
+
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(200, t);
+                filter.frequency.exponentialRampToValueAtTime(2000, t + 0.2);
+
+                gain.gain.setValueAtTime(0.05, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                osc.stop(t + 0.3);
+            },
+            playTick() {
+                if (!appSettings.sound) return;
+                if (!this.ctx) this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, t);
+                osc.frequency.exponentialRampToValueAtTime(400, t + 0.03);
+
+                gain.gain.setValueAtTime(0.02, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(t);
+                osc.stop(t + 0.03);
+            }
+        };
+
+        // State
+        let notes = JSON.parse(localStorage.getItem('smooth-notes') || '[]');
+        let currentNoteId = null;
+        let typingTimeout = null;
+
+        // Cursor State
+        const cursorState = {
+            x: -100,
+            y: -100,
+            targetX: -100,
+            targetY: -100
+        };
+
+        // DOM Elements
+        const grid = document.getElementById('notes-grid');
+        const emptyState = document.getElementById('empty-state');
+        const addBtn = document.getElementById('add-btn');
+        const editorOverlay = document.getElementById('editor-overlay');
+        const editorContainer = document.getElementById('editor-container');
+        const closeEditorBtn = document.getElementById('close-editor-btn');
+        const deleteNoteBtn = document.getElementById('delete-note-btn');
+        const noteTitleInput = document.getElementById('note-title');
+        const noteBodyInput = document.getElementById('note-body');
+        const lastEditedLabel = document.getElementById('last-edited');
+        const noteCountLabel = document.getElementById('note-count');
+        const cursorDot = document.getElementById('cursor-dot');
+
+        // --- Smooth Cursor Logic ---
+        document.addEventListener('mousemove', (e) => {
+            cursorState.targetX = e.clientX;
+            cursorState.targetY = e.clientY;
+            
+            // Initial position set to prevent jump
+            if (cursorState.x === -100) {
+                cursorState.x = e.clientX;
+                cursorState.y = e.clientY;
+            }
+        });
+
+        function updateCursor() {
+            // Lerp (Linear Interpolation) for smoothness
+            // 0.15 = speed factor (lower is smoother/slower)
+            cursorState.x += (cursorState.targetX - cursorState.x) * 0.15;
+            cursorState.y += (cursorState.targetY - cursorState.y) * 0.15;
+
+            cursorDot.style.transform = `translate(${cursorState.x}px, ${cursorState.y}px) translate(-50%, -50%)`;
+            
+            requestAnimationFrame(updateCursor);
+        }
+        updateCursor();
+
+        // Initial Render
+        function renderNotes() {
+            grid.innerHTML = '';
+            
+            if (notes.length === 0) {
+                emptyState.style.opacity = '1';
+            } else {
+                emptyState.style.opacity = '0';
+                notes.forEach((note, index) => {
+                    const noteEl = createNoteElement(note, index);
+                    grid.appendChild(noteEl);
+                });
+            }
+            updateCount();
+        }
+
+        function createNoteElement(note, index) {
+            const div = document.createElement('div');
+            div.className = 'note-card bg-slate-800 rounded-2xl p-6 cursor-pointer border border-white/5 h-48 md:h-56 flex flex-col relative overflow-hidden group animate-pop-in';
+            div.style.animationDelay = `${index * 50}ms`;
+            div.dataset.id = note.id;
+            
+            // Gradient Overlay for style
+            const gradient = document.createElement('div');
+            gradient.className = 'absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 blur-2xl rounded-full -mr-10 -mt-10 pointer-events-none transition-opacity duration-300 group-hover:opacity-100 opacity-50';
+            div.appendChild(gradient);
+
+            const title = document.createElement('h3');
+            title.className = 'text-xl font-semibold mb-3 text-slate-100 truncate pr-2';
+            title.textContent = note.title || 'Untitled';
+            
+            const body = document.createElement('p');
+            body.className = 'text-slate-400 text-sm line-clamp-5 leading-relaxed';
+            body.textContent = note.body || 'No content...';
+
+            const date = document.createElement('div');
+            date.className = 'mt-auto text-xs text-slate-600 pt-4 font-mono flex justify-between items-center';
+            date.innerHTML = `<span>${new Date(note.updated).toLocaleDateString()}</span>`;
+
+            div.appendChild(title);
+            div.appendChild(body);
+            div.appendChild(date);
+
+            div.addEventListener('click', () => openEditor(note.id));
+
+            // 3D Tilt & Spotlight Effect
+            div.addEventListener('mousemove', (e) => {
+                const rect = div.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // Spotlight variables
+                div.style.setProperty('--mouse-x', `${x}px`);
+                div.style.setProperty('--mouse-y', `${y}px`);
+
+                // Tilt Calculation
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                
+                // Normalize values (-1 to 1)
+                const rotateX = ((y - centerY) / centerY) * -4; // Max 4 deg rotation
+                const rotateY = ((x - centerX) / centerX) * 4;
+
+                div.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+            });
+
+            div.addEventListener('mouseleave', () => {
+                div.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+                div.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'; // Smooth return
+            });
+            
+            div.addEventListener('mouseenter', () => {
+                div.style.transition = 'transform 0.1s linear'; // Fast response when entering
+            });
+
+            return div;
+        }
+
+        function updateCount() {
+            noteCountLabel.textContent = `${notes.length} note${notes.length !== 1 ? 's' : ''}`;
+        }
+
+        function saveNotes() {
+            localStorage.setItem('smooth-notes', JSON.stringify(notes));
+            updateCount();
+        }
+
+        // Editor Logic
+        function openEditor(id) {
+            SoundEngine.playSwoosh();
+            currentNoteId = id;
+            const note = notes.find(n => n.id === id);
+            
+            // Morph Origin Logic
+            const card = document.querySelector(`.note-card[data-id="${id}"]`);
+            if (card) {
+                const rect = card.getBoundingClientRect();
+                // Calculate center of card
+                const cardCenterX = rect.left + rect.width / 2;
+                const cardCenterY = rect.top + rect.height / 2;
+                
+                // Calculate center of screen (where editor appears)
+                const screenCenterX = window.innerWidth / 2;
+                const screenCenterY = window.innerHeight / 2;
+                
+                // Offset calculation relative to center
+                const offsetX = cardCenterX - screenCenterX;
+                const offsetY = cardCenterY - screenCenterY;
+                
+                // Set origin so it expands FROM the card
+                editorContainer.style.transformOrigin = `calc(50% + ${offsetX}px) calc(50% + ${offsetY}px)`;
+            } else {
+                // Fallback for new notes or if card not found
+                editorContainer.style.transformOrigin = 'center';
+            }
+
+            // Populate fields
+            noteTitleInput.value = note.title;
+            noteBodyInput.textContent = note.body; // Using textContent for plain text contenteditable
+            lastEditedLabel.textContent = `Edited ${new Date(note.updated).toLocaleString()}`;
+
+            // Show Modal with Animation
+            editorOverlay.classList.remove('pointer-events-none', 'opacity-0');
+            editorContainer.classList.remove('scale-95', 'opacity-0');
+            editorContainer.classList.add('scale-100', 'opacity-100');
+            
+            // Slight delay to focus to allow transition to start smoothly
+            setTimeout(() => {
+                if(!note.title) noteTitleInput.focus();
+            }, 100);
+        }
+
+        function closeEditor() {
+            // Save current state before closing
+            if (currentNoteId) {
+                const noteIndex = notes.findIndex(n => n.id === currentNoteId);
+                if (noteIndex !== -1) {
+                    const title = noteTitleInput.value.trim();
+                    const body = noteBodyInput.innerText.trim(); // innerText preserves newlines better than textContent
+
+                    // If empty, maybe delete? Or just save empty.
+                    // Let's save updates.
+                    notes[noteIndex] = {
+                        ...notes[noteIndex],
+                        title,
+                        body,
+                        updated: Date.now()
+                    };
+                    saveNotes();
+                    
+                    // Update the specific card in the grid to reflect changes without full re-render (for smoothness)
+                    const card = grid.querySelector(`[data-id="${currentNoteId}"]`);
+                    if (card) {
+                        card.querySelector('h3').textContent = title || 'Untitled';
+                        card.querySelector('p').textContent = body || 'No content...';
+                        // Re-trigger animation briefly? No, might be distracting.
+                    }
+                }
+            }
+
+            // Hide Modal
+            editorOverlay.classList.add('pointer-events-none', 'opacity-0');
+            editorContainer.classList.remove('scale-100', 'opacity-100');
+            editorContainer.classList.add('scale-95', 'opacity-0');
+
+            currentNoteId = null;
+        }
+
+        function createNewNote() {
+            const newNote = {
+                id: Date.now().toString(),
+                title: '',
+                body: '',
+                created: Date.now(),
+                updated: Date.now()
+            };
+            
+            // Add to beginning of array
+            notes.unshift(newNote);
+            saveNotes();
+
+            // Create element and prepend to grid
+            const noteEl = createNoteElement(newNote, 0);
+            
+            // If empty state was visible, hide it
+            if (notes.length === 1) {
+                emptyState.style.opacity = '0';
+            }
+            
+            grid.prepend(noteEl);
+            updateCount();
+
+            // Open editor immediately
+            // Ensure origin is center for new notes (overriding the card logic in openEditor if it was called directly)
+            editorContainer.style.transformOrigin = 'center';
+            openEditor(newNote.id);
+            
+            // Focus title
+            setTimeout(() => noteTitleInput.focus(), 300);
+        }
+
+        function deleteCurrentNote() {
+            if (!currentNoteId) return;
+            
+            // No confirmation for maximum smoothness
+            const card = grid.querySelector(`[data-id="${currentNoteId}"]`);
+            
+            // Animate card out
+            if (card) {
+                card.classList.add('animate-pop-out');
+                // Wait for animation to finish before removing from DOM
+                setTimeout(() => {
+                    card.remove();
+                    if (notes.length === 0) emptyState.style.opacity = '1';
+                }, 300);
+            }
+
+            notes = notes.filter(n => n.id !== currentNoteId);
+            saveNotes();
+            
+            // Close editor without saving (since we deleted it)
+            editorOverlay.classList.add('pointer-events-none', 'opacity-0');
+            editorContainer.classList.remove('scale-100', 'opacity-100');
+            editorContainer.classList.add('scale-95', 'opacity-0');
+            currentNoteId = null;
+        }
+
+        // --- Typing Visual Effects ---
+        function getCaretCoordinates() {
+            let x = 0, y = 0;
+            const selection = window.getSelection();
+            if (selection.rangeCount !== 0) {
+                const range = selection.getRangeAt(0).cloneRange();
+                range.collapse(true);
+                const rect = range.getClientRects()[0];
+                if (rect) {
+                    x = rect.left;
+                    y = rect.top;
+                }
+            }
+            return { x, y };
+        }
+
+        function spawnCaretParticles() {
+            if (!appSettings.particles) return;
+            // Only spawn if we can find the caret (mostly works in contenteditable)
+            const { x, y } = getCaretCoordinates();
+            if (x === 0 && y === 0) return; 
+
+            const colors = ['#818cf8', '#c084fc', '#22d3ee']; // Indigo, Purple, Cyan
+            
+            // Spawn 1-2 particles per keypress
+            for(let i=0; i<2; i++) {
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const p = document.createElement('div');
+                p.className = 'caret-particle';
+                p.style.left = x + 'px';
+                p.style.top = (y + 10) + 'px'; // Slight offset
+                p.style.width = (Math.random() * 3 + 2) + 'px';
+                p.style.height = p.style.width;
+                p.style.backgroundColor = color;
+                p.style.boxShadow = `0 0 4px ${color}`;
+                
+                // Random direction upwards
+                const angle = -Math.PI / 2 + (Math.random() * 1.5 - 0.75); 
+                const velocity = Math.random() * 20 + 10;
+                const tx = Math.cos(angle) * velocity;
+                const ty = Math.sin(angle) * velocity;
+
+                p.animate([
+                    { transform: 'translate(0, 0) scale(1)', opacity: 0.9 },
+                    { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+                ], {
+                    duration: 300 + Math.random() * 200,
+                    easing: 'cubic-bezier(0, .9, .57, 1)',
+                }).onfinish = () => p.remove();
+                
+                document.body.appendChild(p);
+            }
+        }
+
+        function handleTyping(e) {
+            // Ignore modifiers
+            if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(e.key)) return;
+
+            SoundEngine.playKeySound();
+            
+            // Only spawn particles if focused on the body (where we can track caret)
+            if (document.activeElement === noteBodyInput) {
+                // Small delay to let the caret move to new position first
+                setTimeout(spawnCaretParticles, 0);
+            }
+            
+            // Visual "Kick" (Impact) on the container
+            editorContainer.classList.remove('animate-kick');
+            void editorContainer.offsetWidth; // Force reflow
+            editorContainer.classList.add('animate-kick');
+
+            // Glow effect
+            editorContainer.classList.add('is-typing');
+            if (typingTimeout) clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                editorContainer.classList.remove('is-typing');
+            }, 150);
+        }
+
+        noteTitleInput.addEventListener('keydown', handleTyping);
+        noteBodyInput.addEventListener('keydown', handleTyping);
+
+        // --- Magnetic Button Effect ---
+        const magneticBtn = addBtn;
+        
+        magneticBtn.addEventListener('mousemove', (e) => {
+            const rect = magneticBtn.getBoundingClientRect();
+            const x = e.clientX - rect.left - rect.width / 2;
+            const y = e.clientY - rect.top - rect.height / 2;
+            
+            // Move button slightly towards mouse
+            magneticBtn.style.transform = `translate(${x * 0.4}px, ${y * 0.4}px) scale(1.1)`;
+        });
+
+        magneticBtn.addEventListener('mouseleave', () => {
+            magneticBtn.style.transform = 'translate(0px, 0px) scale(1)';
+        });
+        
+        // --- Particle System for Extra Juice ---
+        function spawnParticles(x, y, color = '#6366f1') {
+            if (!appSettings.particles) return;
+            const particleCount = 12;
+            for (let i = 0; i < particleCount; i++) {
+                const p = document.createElement('div');
+                p.style.position = 'fixed';
+                p.style.left = x + 'px';
+                p.style.top = y + 'px';
+                p.style.width = Math.random() * 6 + 4 + 'px';
+                p.style.height = p.style.width;
+                p.style.backgroundColor = color;
+                p.style.borderRadius = '50%';
+                p.style.pointerEvents = 'none';
+                p.style.zIndex = '100';
+                
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = Math.random() * 100 + 50;
+                
+                // CSS Animation for particle
+                const tx = Math.cos(angle) * velocity;
+                const ty = Math.sin(angle) * velocity;
+                
+                p.animate([
+                    { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+                    { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+                ], {
+                    duration: Math.random() * 600 + 400,
+                    easing: 'cubic-bezier(0, .9, .57, 1)',
+                }).onfinish = () => p.remove();
+                
+                document.body.appendChild(p);
+            }
+        }
+
+        // Event Listeners
+        addBtn.addEventListener('click', (e) => {
+            spawnParticles(e.clientX, e.clientY, '#a855f7'); // Purple particles
+            SoundEngine.playPopSound(); // Sound effect
+            
+            // Create ripple
+            const circle = document.createElement('span');
+            const diameter = Math.max(addBtn.clientWidth, addBtn.clientHeight);
+            const radius = diameter / 2;
+
+            circle.style.width = circle.style.height = `${diameter}px`;
+            circle.style.left = `${e.clientX - addBtn.getBoundingClientRect().left - radius}px`;
+            circle.style.top = `${e.clientY - addBtn.getBoundingClientRect().top - radius}px`;
+            circle.classList.add('click-ripple');
+
+            const ripple = addBtn.getElementsByClassName('click-ripple')[0];
+            if (ripple) {
+                ripple.remove();
+            }
+
+            addBtn.appendChild(circle);
+            
+            createNewNote();
+        });
+        closeEditorBtn.addEventListener('click', closeEditor);
+        deleteNoteBtn.addEventListener('click', (e) => {
+            SoundEngine.playPopSound();
+            // Get center of button for particle origin
+            const rect = deleteNoteBtn.getBoundingClientRect();
+            spawnParticles(rect.left + rect.width/2, rect.top + rect.height/2, '#ef4444'); // Red particles
+            deleteCurrentNote();
+        });
+
+        // Close on click outside
+        editorOverlay.addEventListener('click', (e) => {
+            if (e.target === editorOverlay) {
+                closeEditor();
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && currentNoteId) {
+                closeEditor();
+            }
+        });
+
+        // Settings UI Elements
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsOverlay = document.getElementById('settings-overlay');
+        const settingsContainer = document.getElementById('settings-container');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        
+        const toggleSound = document.getElementById('setting-sound');
+        const toggleParticles = document.getElementById('setting-particles');
+        const toggleCursor = document.getElementById('setting-cursor');
+        const toggleBlobs = document.getElementById('setting-blobs');
+
+        // Toggle Logic
+        function openSettings() {
+            // Set toggle states
+            toggleSound.checked = appSettings.sound;
+            toggleParticles.checked = appSettings.particles;
+            toggleCursor.checked = appSettings.cursor;
+            toggleBlobs.checked = appSettings.blobs;
+
+            settingsOverlay.classList.remove('pointer-events-none', 'opacity-0');
+            settingsContainer.classList.remove('scale-95');
+            settingsContainer.classList.add('scale-100');
+        }
+
+        function closeSettings() {
+            settingsOverlay.classList.add('pointer-events-none', 'opacity-0');
+            settingsContainer.classList.add('scale-95');
+            settingsContainer.classList.remove('scale-100');
+        }
+
+        function applySettings() {
+            // Cursor
+            // We toggle md:block because it overrides the 'hidden' class on desktop
+            if (appSettings.cursor) {
+                cursorDot.classList.add('md:block');
+            } else {
+                cursorDot.classList.remove('md:block');
+            }
+            // Ensure base hidden class is present (for mobile hiding)
+            cursorDot.classList.add('hidden');
+
+            // Blobs
+            const ambientLayer = document.getElementById('ambient-layer');
+            if (appSettings.blobs) {
+                ambientLayer.classList.remove('hidden');
+            } else {
+                ambientLayer.classList.add('hidden');
+            }
+        }
+
+        // Listeners
+        settingsBtn.addEventListener('click', openSettings);
+        closeSettingsBtn.addEventListener('click', closeSettings);
+        settingsOverlay.addEventListener('click', (e) => {
+            if (e.target === settingsOverlay) closeSettings();
+        });
+
+        // Toggle Listeners
+        function setupToggle(el, key) {
+            el.addEventListener('change', (e) => {
+                appSettings[key] = e.target.checked;
+                saveSettings();
+            });
+        }
+        setupToggle(toggleSound, 'sound');
+        setupToggle(toggleParticles, 'particles');
+        setupToggle(toggleCursor, 'cursor');
+        setupToggle(toggleBlobs, 'blobs');
+
+        // Apply on load
+        applySettings();
+
+        // Initialize
+        renderNotes();
+
+        // Add Welcome Note if empty for first time impression
+        if (notes.length === 0) {
+            setTimeout(() => {
+                const welcomeNote = {
+                    id: Date.now().toString(),
+                    title: 'Welcome to FlowNotes 👋',
+                    body: 'This is a smooth, satisfying place to keep your thoughts.\n\n⚙️ New: Settings Menu! Click the gear icon to toggle sounds, particles, and visual effects.\n\n✨ Ambient background blobs & smooth cursor trail.\n✨ Editor morphs directly from the card you click.\n✨ Type to see magic particles and feel the impact.\n✨ Hover cards for 3D tilt & spotlight effects.\n\nJust start typing to feel the flow!',
+                    created: Date.now(),
+                    updated: Date.now()
+                };
+                notes.push(welcomeNote);
+                saveNotes();
+                renderNotes();
+            }, 100);
+        }
+
+    </script>
+</body>
+</html>
