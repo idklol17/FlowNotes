@@ -3,10 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowNotes</title>
+    
+    <!-- SEO & Meta -->
+    <title>FlowNotes | Smooth & Satisfying Notepad</title>
+    <meta name="description" content="A smooth, satisfying, and beautiful notepad for capturing ideas. Features markdown support, particle effects, and satisfying physics.">
+    <meta name="theme-color" content="#0f172a">
+    
+    <!-- Open Graph / Social Sharing -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="FlowNotes - Capture Ideas Smoothly">
+    <meta property="og:description" content="Experience the most satisfying way to take notes. Smooth animations, markdown support, and pure juice.">
+    <meta property="og:image" content="https://images.unsplash.com/photo-1517842645767-c639042777db?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect x=%2210%22 y=%2210%22 width=%2280%22 height=%2280%22 rx=%2220%22 fill=%22%236366f1%22 /><path d=%22M30 40 h40 M30 60 h25%22 stroke=%22white%22 stroke-width=%228%22 stroke-linecap=%22round%22 /></svg>">
+
+    <!-- Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+        /* Markdown Styles */
+        .prose h1 { font-size: 1.5em; font-weight: 700; margin-bottom: 0.5em; color: #a5b4fc; }
+        .prose h2 { font-size: 1.25em; font-weight: 600; margin-bottom: 0.5em; color: #c4b5fd; }
+        .prose h3 { font-size: 1.1em; font-weight: 600; margin-bottom: 0.5em; color: #ddd6fe; }
+        .prose ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 0.5em; }
+        .prose ol { list-style-type: decimal; padding-left: 1.2em; margin-bottom: 0.5em; }
+        .prose blockquote { border-left: 4px solid #6366f1; padding-left: 1em; color: #94a3b8; font-style: italic; }
+        .prose code { background: rgba(0,0,0,0.3); padding: 0.2em 0.4em; border-radius: 4px; font-family: monospace; font-size: 0.9em; color: #e2e8f0; }
+        .prose pre { background: rgba(0,0,0,0.3); padding: 1em; border-radius: 8px; overflow-x: auto; margin-bottom: 1em; }
+        .prose pre code { background: transparent; padding: 0; }
+        .prose p { margin-bottom: 0.5em; }
+        .prose a { color: #818cf8; text-decoration: underline; }
+        .prose strong { color: #f1f5f9; font-weight: 600; }
+        .prose em { color: #e2e8f0; }
 
         body {
             font-family: 'Inter', sans-serif;
@@ -329,6 +360,12 @@
             <div class="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-slate-800/50">
                 <div class="text-xs font-mono text-slate-500" id="last-edited">Last edited just now</div>
                 <div class="flex gap-2">
+                    <button id="preview-note-btn" class="p-2 rounded-full hover:bg-indigo-500/10 hover:text-indigo-400 text-slate-400 transition-colors" title="Toggle Preview">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                    </button>
                     <button id="delete-note-btn" class="p-2 rounded-full hover:bg-red-500/10 hover:text-red-400 text-slate-400 transition-colors" title="Delete Note">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -345,7 +382,7 @@
             <!-- Editor Content -->
             <div class="flex-grow flex flex-col overflow-y-auto p-8 md:p-12 custom-scrollbar">
                 <input type="text" id="note-title" placeholder="Untitled Note" class="caret-indigo-500 text-3xl md:text-4xl font-bold bg-transparent border-none outline-none text-white placeholder-slate-600 mb-6 w-full transition-all">
-                <div id="note-body" contenteditable="true" placeholder="Start typing your thoughts..." class="caret-indigo-500 flex-grow text-lg text-slate-300 leading-relaxed outline-none min-h-[200px] transition-all"></div>
+                <div id="note-body" contenteditable="true" placeholder="Start typing your thoughts..." class="caret-indigo-500 flex-grow text-lg text-slate-300 leading-relaxed outline-none min-h-[200px] transition-all whitespace-pre-wrap"></div>
             </div>
 
         </div>
@@ -585,6 +622,8 @@
         let notes = JSON.parse(localStorage.getItem('smooth-notes') || '[]');
         let currentNoteId = null;
         let typingTimeout = null;
+        let isPreviewMode = false;
+        let rawNoteContent = '';
 
         // Cursor State
         const cursorState = {
@@ -602,6 +641,7 @@
         const editorContainer = document.getElementById('editor-container');
         const closeEditorBtn = document.getElementById('close-editor-btn');
         const deleteNoteBtn = document.getElementById('delete-note-btn');
+        const previewBtn = document.getElementById('preview-note-btn');
         const noteTitleInput = document.getElementById('note-title');
         const noteBodyInput = document.getElementById('note-body');
         const lastEditedLabel = document.getElementById('last-edited');
@@ -668,9 +708,9 @@
             title.className = 'text-xl font-semibold mb-3 text-slate-100 truncate pr-2';
             title.textContent = note.title || 'Untitled';
             
-            const body = document.createElement('p');
-            body.className = 'text-slate-400 text-sm line-clamp-5 leading-relaxed';
-            body.textContent = note.body || 'No content...';
+            const body = document.createElement('div');
+            body.className = 'text-slate-400 text-sm line-clamp-5 leading-relaxed prose prose-invert';
+            body.innerHTML = marked.parse(note.body || 'No content...');
 
             const date = document.createElement('div');
             date.className = 'mt-auto text-xs text-slate-600 pt-4 font-mono flex justify-between items-center';
@@ -728,6 +768,14 @@
         function openEditor(id) {
             SoundEngine.playSwoosh();
             currentNoteId = id;
+            
+            // Reset Preview Mode
+            isPreviewMode = false;
+            rawNoteContent = '';
+            noteBodyInput.contentEditable = 'true';
+            noteBodyInput.classList.remove('prose', 'prose-invert');
+            previewBtn.classList.remove('text-indigo-400', 'bg-indigo-500/10');
+            
             const note = notes.find(n => n.id === id);
             
             // Morph Origin Logic
@@ -775,10 +823,16 @@
                 const noteIndex = notes.findIndex(n => n.id === currentNoteId);
                 if (noteIndex !== -1) {
                     const title = noteTitleInput.value.trim();
-                    const body = noteBodyInput.innerText.trim(); // innerText preserves newlines better than textContent
-
-                    // If empty, maybe delete? Or just save empty.
-                    // Let's save updates.
+                    
+                    // Handle content saving based on mode
+                    let body;
+                    if (isPreviewMode) {
+                        body = rawNoteContent;
+                    } else {
+                        body = noteBodyInput.innerText; // Keep raw text including newlines
+                    }
+                    // Clean up trailing whitespace if needed, but innerText is usually okay.
+                    
                     notes[noteIndex] = {
                         ...notes[noteIndex],
                         title,
@@ -787,12 +841,12 @@
                     };
                     saveNotes();
                     
-                    // Update the specific card in the grid to reflect changes without full re-render (for smoothness)
+                    // Update the specific card in the grid to reflect changes without full re-render
                     const card = grid.querySelector(`[data-id="${currentNoteId}"]`);
                     if (card) {
                         card.querySelector('h3').textContent = title || 'Untitled';
-                        card.querySelector('p').textContent = body || 'No content...';
-                        // Re-trigger animation briefly? No, might be distracting.
+                        // Re-render markdown for the card
+                        card.querySelector('.prose').innerHTML = marked.parse(body || 'No content...');
                     }
                 }
             }
@@ -998,6 +1052,37 @@
         }
 
         // Event Listeners
+        function togglePreview() {
+            if (isPreviewMode) {
+                // Switch to Edit Mode
+                isPreviewMode = false;
+                noteBodyInput.innerHTML = ''; // Clear HTML
+                noteBodyInput.innerText = rawNoteContent; // Restore raw markdown
+                noteBodyInput.contentEditable = 'true';
+                noteBodyInput.classList.remove('prose', 'prose-invert');
+                noteBodyInput.focus();
+                
+                // UI Feedback
+                previewBtn.classList.remove('text-indigo-400', 'bg-indigo-500/10');
+            } else {
+                // Switch to Preview Mode
+                isPreviewMode = true;
+                rawNoteContent = noteBodyInput.innerText; // Save raw markdown
+                
+                // Render Markdown
+                const html = marked.parse(rawNoteContent);
+                noteBodyInput.innerHTML = html;
+                noteBodyInput.contentEditable = 'false';
+                noteBodyInput.classList.add('prose', 'prose-invert');
+                
+                // UI Feedback
+                previewBtn.classList.add('text-indigo-400', 'bg-indigo-500/10');
+            }
+            SoundEngine.playPopSound();
+        }
+        
+        previewBtn.addEventListener('click', togglePreview);
+
         addBtn.addEventListener('click', (e) => {
             spawnParticles(e.clientX, e.clientY, '#a855f7'); // Purple particles
             SoundEngine.playPopSound(); // Sound effect
@@ -1125,7 +1210,7 @@
                 const welcomeNote = {
                     id: Date.now().toString(),
                     title: 'Welcome to FlowNotes 👋',
-                    body: 'This is a smooth, satisfying place to keep your thoughts.',
+                    body: 'This is a smooth, satisfying place to keep your thoughts.\n\n**New: Markdown Support!** 📝\nYou can now write in **bold**, *italics*, and even use:\n- Lists\n- `Code blocks`\n- # Headers\n\nClick the "Eye" icon in the toolbar to toggle Preview mode.\n\n✨ **"Living" UI Update**\n- The cursor now visually reacts to your clicks.\n- The header logo shimmers with a liquid gradient.\n- The empty state icon floats gently in the void.\n\n⚙️ **Plus:** Settings menu, thocky sounds, 3D tilt cards, and particle effects.\n\nJust start typing to feel the flow!',
                     created: Date.now(),
                     updated: Date.now()
                 };
