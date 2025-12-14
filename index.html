@@ -25,16 +25,47 @@
         }
         ::-webkit-scrollbar-track {
             background: transparent;
+            margin-block: 0.5rem;
         }
         ::-webkit-scrollbar-thumb {
-            background: #334155;
-            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #0f172a; /* Creates padding effect */
+            background-clip: content-box;
+            border-radius: 100vh;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #475569;
+            background-color: rgba(255, 255, 255, 0.3);
         }
 
         /* Animation Classes */
+        /* Text Shimmer */
+        @keyframes shimmer {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .animate-text-shimmer {
+            background-size: 200% auto;
+            animation: shimmer 5s linear infinite;
+        }
+
+        /* Floating Animation */
+        @keyframes float-y {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        .animate-float {
+            animation: float-y 6s ease-in-out infinite;
+        }
+
+        /* Cursor Click State */
+        .cursor-dot.active {
+            /* Transform handled by JS to preserve position */
+            background: rgba(255, 255, 255, 0.8);
+            border-color: transparent;
+            transition: transform 0.1s, background-color 0.1s;
+        }
         .note-card {
             transition: transform 0.1s linear, 
                         box-shadow 0.3s ease,
@@ -251,7 +282,7 @@
     <!-- Header -->
     <header class="p-6 md:p-10 flex justify-between items-center z-10">
         <div>
-            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tight">FlowNotes</h1>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-tight animate-text-shimmer">FlowNotes</h1>
             <p class="text-slate-400 text-sm mt-1">Capture ideas smoothly</p>
         </div>
         <div class="flex items-center gap-4">
@@ -273,7 +304,7 @@
         
         <!-- Empty State -->
         <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-0 transition-opacity duration-500">
-            <div class="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center mb-4 shadow-lg ring-1 ring-white/10">
+            <div class="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center mb-4 shadow-lg ring-1 ring-white/10 animate-float">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
@@ -595,11 +626,16 @@
             cursorState.x += (cursorState.targetX - cursorState.x) * 0.15;
             cursorState.y += (cursorState.targetY - cursorState.y) * 0.15;
 
-            cursorDot.style.transform = `translate(${cursorState.x}px, ${cursorState.y}px) translate(-50%, -50%)`;
+            const scale = cursorDot.classList.contains('active') ? 'scale(0.5)' : 'scale(1)';
+            cursorDot.style.transform = `translate(${cursorState.x}px, ${cursorState.y}px) translate(-50%, -50%) ${scale}`;
             
             requestAnimationFrame(updateCursor);
         }
         updateCursor();
+
+        // Cursor Click Interaction
+        document.addEventListener('mousedown', () => cursorDot.classList.add('active'));
+        document.addEventListener('mouseup', () => cursorDot.classList.remove('active'));
 
         // Initial Render
         function renderNotes() {
@@ -1089,7 +1125,7 @@
                 const welcomeNote = {
                     id: Date.now().toString(),
                     title: 'Welcome to FlowNotes 👋',
-                    body: 'Start typing here or make a new note to get started.',
+                    body: 'This is a smooth, satisfying place to keep your thoughts.',
                     created: Date.now(),
                     updated: Date.now()
                 };
